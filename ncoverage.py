@@ -1,14 +1,18 @@
+#################################################################
+# Based on ARiSE-Lab/deepTest. Modified by thehellum            #
+#################################################################
+
 from __future__ import print_function
 import numpy as np
 from keras.models import Model
-#from past.builtins import xrange
 
 
 class NCoverage():
 
-    def __init__(self, model, threshold=0.1, exclude_layer=['pool', 'fc', 'flatten'], only_layer=""):
-        '''
+    def __init__(self, model, threshold=0.1, exclude_layer=['pool', 'fc', 'flatten', 'input', 'regression', 'classification'], only_layer=""):
+        ''' 
         Initialize the model to be tested
+        Exclude layers described in https://github.com/peikexin9/deepxplore/issues/3
         :param threshold: threshold to determine if the neuron is activated
         :param model_name: ImageNet Model name, can have ('vgg16','vgg19','resnet50')
         :param neuron_layer: Only these layers are considered for neuron coverage
@@ -66,9 +70,6 @@ class NCoverage():
         covered_neurons = []
         for layer_name in self.layer_to_compute:
             print(layer_name)
-            # Exclude layers described in https://github.com/peikexin9/deepxplore/issues/3
-            if 'flatten' in layer_name or 'input' in layer_name or 'regression' in layer_name or 'classification' in layer_name:
-                continue 
             layer_model = Model(inputs=self.model.input, outputs=self.model.get_layer(layer_name).output)
             layer_outputs = layer_model.predict(input_data)
             for layer_output in layer_outputs:
@@ -89,9 +90,6 @@ class NCoverage():
         '''
         for layer_name in self.layer_to_compute:
             print(layer_name)
-            # Exclude layers described in https://github.com/peikexin9/deepxplore/issues/3
-            if 'flatten' in layer_name or 'input' in layer_name or 'regression' in layer_name or 'classification' in layer_name:
-                continue         
             layer_model = Model(inputs=self.model.inputs, outputs=self.model.get_layer(layer_name).output)
 
             layer_outputs = layer_model.predict(input_data)
