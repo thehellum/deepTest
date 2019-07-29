@@ -2,6 +2,8 @@
 
 DeepTest is a systematic testing tool for automatically detecting erroneous behaviors of DNN-driven vehicles that can potentially lead to fatal crashes.
 
+This is a modified version of DeepTest for CNNs used for object detection. This repo obtains an overview of neuron coverage (together with evaluating performance) of the network on an input image and comparing this to multiple augmented images.
+
 ## Install Required Packages
 
 OS: Ubuntu 16.04  

@@ -1,6 +1,8 @@
 from __future__ import print_function
 import numpy as np
 from keras.models import Model
+#from past.builtins import xrange
+
 
 class NCoverage():
 
@@ -29,7 +31,12 @@ class NCoverage():
         self.cov_dict = {}
 
         for layer_name in self.layer_to_compute:
-            for index in xrange(self.model.get_layer(layer_name).output_shape[-1]):
+            if type(self.model.get_layer(layer_name).output_shape[-1]) == type(()): # If layer is tuple (this is the case for the last layer in resnet50)
+                layer_size = range(self.model.get_layer(layer_name).output_shape[-1][-1])
+            else:
+                layer_size = range(self.model.get_layer(layer_name).output_shape[-1])
+
+            for index in layer_size:
                 self.cov_dict[(layer_name, index)] = False
 
     def scale(self, layer_outputs, rmax=1, rmin=0):
@@ -58,12 +65,15 @@ class NCoverage():
 
         covered_neurons = []
         for layer_name in self.layer_to_compute:
-            layer_model = Model(input=self.model.input,
-                                output=self.model.get_layer(layer_name).output)
+            print(layer_name)
+            # Exclude layers described in https://github.com/peikexin9/deepxplore/issues/3
+            if 'flatten' in layer_name or 'input' in layer_name or 'regression' in layer_name or 'classification' in layer_name:
+                continue 
+            layer_model = Model(inputs=self.model.input, outputs=self.model.get_layer(layer_name).output)
             layer_outputs = layer_model.predict(input_data)
             for layer_output in layer_outputs:
                 scaled = self.scale(layer_output)
-                for neuron_idx in xrange(scaled.shape[-1]):
+                for neuron_idx in range(scaled.shape[-1]):
                     if np.mean(scaled[..., neuron_idx]) > self.threshold:
                         if (layer_name, neuron_idx) not in covered_neurons:
                             covered_neurons.append((layer_name, neuron_idx))
@@ -78,15 +88,18 @@ class NCoverage():
         :return: the neurons that can be covered by the input
         '''
         for layer_name in self.layer_to_compute:
-            layer_model = Model(input=self.model.inputs,
-                                output=self.model.get_layer(layer_name).output)
+            print(layer_name)
+            # Exclude layers described in https://github.com/peikexin9/deepxplore/issues/3
+            if 'flatten' in layer_name or 'input' in layer_name or 'regression' in layer_name or 'classification' in layer_name:
+                continue         
+            layer_model = Model(inputs=self.model.inputs, outputs=self.model.get_layer(layer_name).output)
 
             layer_outputs = layer_model.predict(input_data)
 
             for layer_output in layer_outputs:
                 scaled = self.scale(layer_output)
                 #print(scaled.shape)
-                for neuron_idx in xrange(scaled.shape[-1]):
+                for neuron_idx in range(scaled.shape[-1]):
                     if np.mean(scaled[..., neuron_idx]) > self.threshold:
                         self.cov_dict[(layer_name, neuron_idx)] = True
             del layer_outputs
@@ -110,7 +123,7 @@ class NCoverage():
             for layer_output in layer_outputs:
                 scaled = self.scale(layer_output)
                 #print(scaled.shape)
-                for neuron_idx in xrange(scaled.shape[-1]):
+                for neuron_idx in range(scaled.shape[-1]):
                     if np.mean(scaled[..., neuron_idx]) > self.threshold:
                         if not self.cov_dict[(layer_name, neuron_idx)]:
                             return True
@@ -152,5 +165,11 @@ class NCoverage():
         :return:
         '''
         for layer_name in self.layer_to_compute:
-            for index in xrange(self.model.get_layer(layer_name).output_shape[-1]):
+            print(layer_name)
+            if type(self.model.get_layer(layer_name).output_shape[-1]) == type(()): # If layer is tuple (this is the case for the last layer in resnet50)
+                layer_size = range(self.model.get_layer(layer_name).output_shape[-1][-1])
+            else:
+                layer_size = range(self.model.get_layer(layer_name).output_shape[-1])
+            
+            for index in layer_size:
                 self.cov_dict[(layer_name, index)] = False
