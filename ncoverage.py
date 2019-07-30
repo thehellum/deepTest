@@ -113,8 +113,10 @@ class NCoverage():
         Otherwise return False.
         '''
         for layer_name in self.layer_to_compute:
-            layer_model = Model(input=self.model.inputs,
-                                output=self.model.get_layer(layer_name).output)
+            print(layer_name)
+            
+            layer_model = Model(inputs=self.model.inputs,
+                                outputs=self.model.get_layer(layer_name).output)
 
             layer_outputs = layer_model.predict(input_data)
 

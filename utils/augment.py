@@ -44,42 +44,69 @@ class DatasetAugmenter():
         tree = ElementTree.parse(path)
         return tree
 
+    def original_file_name(self, index):
+        path = self.xml_file_paths[index]
+        return os.path.basename(path)[:-4]
+
     def get_bndbox(self, tree):
         root = tree.getroot()
         xmldict = XmlDictConfig(root)
+        bndbox = []
         if type(xmldict['object']) == type([]):
             for elem in xmldict['object']:
                 xmin,ymin,xmax,ymax = elem['bndbox']['xmin'],elem['bndbox']['ymin'],elem['bndbox']['xmax'],elem['bndbox']['ymax']
-                if not any(elem['name'] in i for i in classes):
-                    classes.append((elem['name'], len(classes)))
+                bndbox.append((int(xmin), int(ymin), int(xmax), int(ymax)))
         else:
             xmin,ymin,xmax,ymax = xmldict['object']['bndbox']['xmin'],xmldict['object']['bndbox']['ymin'],xmldict['object']['bndbox']['xmax'],xmldict['object']['bndbox']['ymax']
-        return int(xmin),int(ymin),int(xmax),int(ymax)
+            bndbox.append((int(xmin), int(ymin), int(xmax), int(ymax)))
+        return bndbox
+
+    def update_bndbox(self, tree, bndbox):
+        root = tree.getroot()
+        object_count = len(bndbox)
+        for i in range(object_count):
+            xmin, ymin, xmax, ymax = bndbox[i]
+            root[6+i][4][0].text = str(xmin)
+            root[6+i][4][1].text = str(ymin)
+            root[6+i][4][2].text = str(xmax)
+            root[6+i][4][3].text = str(ymax)
 
     def save_image(self, img, dir, name, index, M=np.array([None])):
         tree = self.load_xml_file(index=index)
         if M.all() != None:
-            xmin, ymin, xmax, ymax = self.get_bndbox(tree)
-            draw_bndbox(img, xmin, ymin, xmax, ymax)
-            img = img/255
-            visualize(img)
-            #vector1 = np.array([[xmin],[ymin],[1]], dtype='float32')
-            #vector2 = np.array([[xmax],[ymax],[1]], dtype='float32')
-            #[[xmin_new],[ymin_new]] = np.dot(M,vector1).astype(int)
-            #[[xmax_new],[ymax_new]] = np.dot(M,vector2).astype(int)
-            h,w,_ = img.shape
-            print(h,w)
-            cos = np.abs(M[0,0])
-            sin = np.abs(M[0,1])
-            nW = int((h*sin) + (w*cos))
-            nH = int((h*cos) + (w*sin))
-            draw_bndbox(img, xmin_new, ymin_new, xmax_new, ymax_new)
-            visualize(img)
+            bndbox = self.get_bndbox(tree)
+            new_bndbox = []
+            for elem in bndbox:
+                xmin, ymin, xmax, ymax = elem
+
+                x1,y1 = xmin, ymin
+                x2,y2 = xmin, ymax
+                x3,y3 = xmax, ymax
+                x4,y4 = xmax, ymin
+
+                corners = np.hstack((x1,y1,x2,y2,x3,y3,x4,y4))
+                corners = corners.reshape(-1,2)
+                corners = np.hstack((corners, np.ones((corners.shape[0],1), dtype=type(corners[0][0]))))
+
+                calculated = np.dot(M,corners.T).T
+                calculated = calculated.reshape(-1,8)
+
+                x_ = calculated[:,[0,2,4,6]]
+                y_ = calculated[:,[1,3,5,7]]
+
+                xmin_new = int(np.min(x_,1).reshape(-1,1))
+                ymin_new = int(np.min(y_,1).reshape(-1,1))
+                xmax_new = int(np.max(x_,1).reshape(-1,1))
+                ymax_new = int(np.max(y_,1).reshape(-1,1))
+
+                new_bndbox.append((xmin_new, ymin_new, xmax_new, ymax_new))
+
+            self.update_bndbox(tree, new_bndbox)
 
         if self.separate_folders:
-            cv2.imwrite(os.path.join(self.path, dir, name), img)
-            print(os.path.join(self.path, dir, name[:-4] + '.xml'))
-            tree.write(os.path.join(self.path, dir, name[:-4] + '.xml'))
+            o_name = self.original_file_name(index)
+            cv2.imwrite(os.path.join(self.path, dir, o_name + '.jpg'), img)
+            tree.write(os.path.join(self.path, dir, o_name + '.xml'))
         else:
             global_name = self.generate_name(seed=self.img_count)
             global_name_xml = self.generate_name(seed=self.img_count, file_type='.xml')
@@ -89,13 +116,13 @@ class DatasetAugmenter():
 
     def add_non_augmented(self):
         if self.separate_folders:
-            self.create_directory(name='non_augmented')
+            self.create_directory(name='original')
 
         for i in range(self.size):
             name = self.generate_name(seed=i)
 
             img = np.copy(a=self.database[...,i])
-            self.save_image(img=img, dir='non_augmented', name=name, index=i)
+            self.save_image(img=img, dir='original', name=name, index=i)
 
     def add_gaussian_noise(self, mu, sigma):
         if self.separate_folders:
@@ -109,36 +136,46 @@ class DatasetAugmenter():
             self.save_image(img=img, dir='gaussian_noise', name=name, index=i)
 
     def add_black_box(self):
-        h,w = self.img_shape
         if self.separate_folders:
             self.create_directory(name='black_box')
+        h,w = self.img_shape
         for k in range(self.size):
+            tree = self.load_xml_file(index=k)
+            bndbox = self.get_bndbox(tree)
             name = self.generate_name(seed=k)
-            x = int(np.random.uniform(low=50, high=150, size=1))
-            y = int(np.random.uniform(low=50, high=150, size=1))
-            # Uniform distribution
-            i = int(np.random.uniform(low=x//2, high=(h-(x//2)), size=1))
-            j = int(np.random.uniform(low=y//2, high=(w-(y//2)), size=1))
-            # Normal distribution
-            #i = int(np.random.normal(loc=h//2, scale=100, size=1))
-            #j = int(np.random.normal(loc=w//2, scale=100, size=1))
             img = np.copy(a=self.database[...,k])
-            img[i-x//2:i+x//2,j-y//2:j+y//2,:] = 0
-            #test[i-x//2:i+x//2,j-y//2:j+y//2] = 0
+            box_approved = True
+            counter = 0
+            while box_approved:
+                x = int(np.random.uniform(low=50, high=150, size=1))
+                y = int(np.random.uniform(low=50, high=150, size=1))
+                i = int(np.random.uniform(low=x//2, high=(h-(x//2)), size=1))
+                j = int(np.random.uniform(low=y//2, high=(w-(y//2)), size=1))
+                xmin,ymin,xmax,ymax = j-y//2, i-x//2, j+y//2, i+x//2
+                for box in bndbox:
+                    IoU = iou(box, [xmin,ymin,xmax,ymax])
+                    if IoU < 0.01:
+                        img[i-x//2:i+x//2, j-y//2:j+y//2, :] = 0
+                        box_approved = False
+                    elif counter > 10:
+                        box_approved = False
+                    else:
+                        pass
+                    counter += 1
             self.save_image(img=img, dir='black_box', name=name, index=k)
 
     def edit_brightness(self, intensity_shifts):
-        if self.separate_folders:
-            self.create_directory(name='brightness')
-        for i in range(len(intensity_shifts)):
+        for shift in intensity_shifts:
+            dir_name = 'brightness' + '_' + str(shift)
+            if self.separate_folders:
+                self.create_directory(name=dir_name)
             for j in range(self.size):
-                name = self.generate_name(seed=+j)
-                print(name)
+                file_name = self.generate_name(seed=+j)
                 img = np.copy(self.database[...,j])
-                img += intensity_shifts[i]
+                img += shift
                 img[img < 0] = 0
                 img[img > 255] = 255
-                self.save_image(img=img, dir='brightness', name=name, index=j)
+                self.save_image(img=img, dir=dir_name, name=file_name, index=j)
 
     def add_dense_fog(self, fog_state, n_states):
         # Name all the hyperparameters and make a procedure for generating suitable hyperparameters randomly
@@ -191,11 +228,6 @@ class DatasetAugmenter():
         if self.separate_folders:
             self.create_directory(name='s_fog')
 
-        #if self.img_channels == 3:
-        #    shape = (self.img_shape[0], self.img_shape[1], self.img_channels)
-        #else:
-        #    shape = (self.img_shape[0], self.img_shape[1])
-
         for i in range(self.size):
             name = self.generate_name(seed=i)
             img = np.copy(a=self.database[...,i])
@@ -209,7 +241,7 @@ class DatasetAugmenter():
             self.create_directory(name='blur')
         for i in range(self.size):
             name = self.generate_name(seed=i)
-            img = np.copy(a=self.database[...,-1])
+            img = np.copy(a=self.database[...,i])
             img_blurred = cv2.GaussianBlur(src=img, ksize=ksize, sigmaX=sigmaX, sigmaY=sigmaY)
             self.save_image(img=img_blurred, dir='blur', name=name, index=i)
 
@@ -315,7 +347,6 @@ class DatasetAugmenter():
                 if '.jpeg' in name or '.jpg' in name:
                     name, type = name.split('.')
                 file_path = os.path.join(root, name)
-                #print(file_path)
                 if float(np.random.uniform(low=0, high=1, size=1)) > split:
                     os.rename(file_path, os.path.join(val_dir, name))
                 else:
@@ -326,8 +357,8 @@ def generate_random_lines(imshape, slant, drop_length, number_of_drops):
     drops=[]
     for i in range(number_of_drops):
         ## If You want heavy rain, try increasing this
-        x= np.random.randint(0,imshape[1]-slant)
-        y= np.random.randint(0,imshape[0]-drop_length)
+        x = np.random.randint(0,imshape[1]-slant)
+        y = np.random.randint(0,imshape[0]-drop_length)
         drops.append((x,y))
     return drops
 
@@ -340,7 +371,6 @@ def darken_image(img):
 
 def generate_cloud_pattern(im_sizeX, im_sizeY):
     turbulence_pattern = make_fog(im_sizeX,im_sizeY)
-    #turb_img = Image.fromarray(np.dstack([turbulence_pattern.astype(np.uint8)]*3))
     turb_img = np.dstack([turbulence_pattern.T.astype(np.float32)]*3)
     return turb_img
 
@@ -357,12 +387,17 @@ def make_fog(im_sizeX, im_sizeY):
     return turbulence_pattern
 
 def draw_bndbox(img, xmin, ymin, xmax, ymax):
-    cv2.rectangle(img=img, pt1=(xmin,ymin), pt2=(xmax,ymax), color=(0,0,255), thickness=3)
-    #cv2.line(img, (xmin, ymin), (xmax, ymin), (0,255,0), 2)
-    #cv2.line(img, (xmin, ymin), (xmin, ymax), (0,255,0), 2)
+    cv2.rectangle(img=img, pt1=(xmin,ymin), pt2=(xmax,ymax), color=(0,0,255), thickness=1)
 
-    #cv2.line(img, (xmax, ymax), (xmax, ymin), (0,255,0), 2)
-    #cv2.line(img, (xmax, ymax), (xmin, ymax), (0,255,0), 2)
+def iou(box_a, box_b):
+    x_a = max(box_a[0], box_b[0])
+    y_a = max(box_a[1], box_b[1])
+    x_b = min(box_a[2], box_b[2])
+    y_b = min(box_a[3], box_b[3])
+    intersection = max(0, x_b - x_a) * max(0,y_b - y_a)
+    area_a = (box_a[2] - box_a[0]) * (box_a[3] - box_a[1])
+    area_b = (box_b[2] - box_b[0]) * (box_b[3] - box_b[1])
+    return intersection / float(area_a + area_b - intersection)
 
 def visualize(img):
     cv2.namedWindow('Img', cv2.WINDOW_NORMAL)
@@ -370,19 +405,16 @@ def visualize(img):
     cv2.waitKey(0)
     cv2.destroyAllWindows()
 
-if __name__ == '__main__':
-    imgs_rgb = ImageLoader(shape=(720,1280), scale=1, mode='rgb', size=2)
-    imgs_rgb.load_from_dir(dir_path='Dataset_full')
+def augment(data_path, save_path):
+    imgs_rgb = ImageLoader(shape=(720,1280), scale=1, mode='rgb', size=20)
+    imgs_rgb.load_from_dir(dir_path=data_path)
     # Don't normalize!
-    da = DatasetAugmenter(imgs=imgs_rgb, separate_folders=True, path=sys.path[0] + '\Data_augmentation' )
-    #train_val_split(split=0.8, path_from=os.path.join(sys.path[0], 'data', 'dnv_dataset.csv'), path_to=os.path.join(sys.path[0], 'data'))
+    da = DatasetAugmenter(imgs=imgs_rgb, separate_folders=True, path=save_path)
 
-    da.add_non_augmented()
-    #da.train_val_split()
-    #assert 1==2
+    # da.add_non_augmented()
     da.add_gaussian_noise(mu=0, sigma=20)
     da.add_black_box()
-    da.edit_brightness(intensity_shifts=[-150,-125,-100,-75,-50,-25,0,25,50,75])
+    da.edit_brightness(intensity_shifts=[-150,-100,-50,25,75])
     fog_state = {'offset': [10,0],
                 'fog_intenisity': [3.0,2.0],
                  'pixel_intenisty_cutoff': [210,210],
@@ -392,7 +424,36 @@ if __name__ == '__main__':
     da.add_dense_fog(fog_state, n_states=2)
     da.add_sparse_fog(fog_intensity=0.6)
     da.gaussian_blur()
-    #da.rotate(theta = 0)
+    da.rotate(theta = 10)
+    da.add_rain()
+    da.add_snow()
+    #da.add_rain_on_lens()
+
+    #for i in range(10):
+        #rain_on_lens(imgs_rgb.database[...,i])
+
+
+if __name__ == '__main__':
+    imgs_rgb = ImageLoader(shape=(720,1280), scale=1, mode='rgb', size=20)
+    imgs_rgb.load_from_dir(dir_path='Dataset_full')
+    # Don't normalize!
+    da = DatasetAugmenter(imgs=imgs_rgb, separate_folders=True, path=sys.path[0] + '\Data_augmentation' )
+    #train_val_split(split=0.8, path_from=os.path.join(sys.path[0], 'data', 'dnv_dataset.csv'), path_to=os.path.join(sys.path[0], 'data'))
+
+    da.add_non_augmented()
+    da.add_gaussian_noise(mu=0, sigma=20)
+    da.add_black_box()
+    da.edit_brightness(intensity_shifts=[-150,-100,-50,25,75])
+    fog_state = {'offset': [10,0],
+                'fog_intenisity': [3.0,2.0],
+                 'pixel_intenisty_cutoff': [210,210],
+                 'texture_variation_gain': [50,30],
+                 'texture_variation_frequency': [-0.0009,0.001],
+                 'noise_variane': [0.01,0.01]}
+    da.add_dense_fog(fog_state, n_states=2)
+    da.add_sparse_fog(fog_intensity=0.6)
+    da.gaussian_blur()
+    da.rotate(theta = 10)
     da.add_rain()
     da.add_snow()
     #da.add_rain_on_lens()

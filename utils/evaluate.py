@@ -145,7 +145,43 @@ def insert_detections(boxes, scores, labels, precision=0.5):
             break
 
 
-def calculate_precision_recall(pred_boxes, gt_boxes, sum_tp, sum_fp, sum_fn, iou_threshold=0.5):
+# def calculate_precision_recall(pred_boxes, gt_boxes, sum_tp, sum_fp, sum_fn, iou_threshold=0.5):
+#     """Given a set of prediction boxes and ground truth boxes for single images,
+#        calculates recall and precision over single images.
+       
+#        NB: all_prediction_boxes and all_gt_boxes are not matched!
+#     Args:
+#         all_prediction_boxes: (list of np.array of floats): each element in the list
+#             is a np.array containing all predicted bounding boxes for the given image
+#             with shape: [number of predicted boxes, 4].
+#             Each row includes [xmin, xmax, ymin, ymax]
+#         all_gt_boxes: (list of np.array of floats): each element in the list
+#             is a np.array containing all ground truth bounding boxes for the given image
+#             objects with shape: [number of ground truth boxes, 4].
+#             Each row includes [xmin, xmax, ymin, ymax]
+#         pred_boxes: A dictionary with value as a list of 4 elements (x1, y1, x2, y2).
+#         gt_boxes: A dictionary with value as a list of 4 elements (x1, y1, x2, y2).
+#     Returns:
+#         tuple: (precision, recall). Both float.
+#     """ 
+
+#     for obj_gt, label_gt in gt_boxes.items():         
+#         for obj_pred, label_pred in pred_boxes.items():
+#             if obj_gt != obj_pred:
+#                 continue
+
+#             pos_neg = calculate_individual_image_result(label_pred, label_gt, iou_threshold)
+#             sum_tp += pos_neg['true_pos']
+#             sum_fp += pos_neg['false_pos']
+#             sum_fn += pos_neg['false_neg']        
+
+#     precision = calculate_precision(sum_tp, sum_fp, sum_fn)
+#     recall = calculate_recall(sum_tp, sum_fp, sum_fn)
+
+#     return precision, recall, pos_neg
+
+
+def calculate_precision_recall(pred_boxes, gt_boxes, iou_threshold=0.5):
     """Given a set of prediction boxes and ground truth boxes for single images,
        calculates recall and precision over single images.
        
@@ -164,16 +200,19 @@ def calculate_precision_recall(pred_boxes, gt_boxes, sum_tp, sum_fp, sum_fn, iou
     Returns:
         tuple: (precision, recall). Both float.
     """ 
+    sum_tp = 0
+    sum_fp = 0
+    sum_fn = 0
 
     for obj_gt, label_gt in gt_boxes.items():         
         for obj_pred, label_pred in pred_boxes.items():
             if obj_gt != obj_pred:
                 continue
 
-            pos_neg = calculate_individual_image_result(label_pred, label_gt, iou_threshold)
-            sum_tp += pos_neg['true_pos']
-            sum_fp += pos_neg['false_pos']
-            sum_fn += pos_neg['false_neg']        
+            pn_classification = calculate_individual_image_result(label_pred, label_gt, iou_threshold)
+            sum_tp += pn_classification['true_pos']
+            sum_fp += pn_classification['false_pos']
+            sum_fn += pn_classification['false_neg']
 
     precision = calculate_precision(sum_tp, sum_fp, sum_fn)
     recall = calculate_recall(sum_tp, sum_fp, sum_fn)
