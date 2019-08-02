@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import json
-import copy
+# import copy
 
 def calculate_iou(prediction_box, gt_box):
     """Calculate intersection over union of single predicted and ground truth box.
@@ -42,6 +42,7 @@ def calculate_precision(num_tp, num_fp, num_fn):
     return num_tp/(num_tp+num_fp)
 
 
+
 def calculate_recall(num_tp, num_fp, num_fn):
     """ Calculates the recall for the given parameters.
         Returns 0 if num_tp + num_fn = 0
@@ -56,6 +57,7 @@ def calculate_recall(num_tp, num_fp, num_fn):
         return 0
 
     return num_tp/(num_tp+num_fn)
+
 
 
 def get_all_box_matches(prediction_boxes, gt_boxes, iou_threshold):
@@ -105,7 +107,6 @@ def get_all_box_matches(prediction_boxes, gt_boxes, iou_threshold):
 
 
 
-
 def calculate_individual_image_result(prediction_boxes, gt_boxes, iou_threshold):
     """Given a set of prediction boxes and ground truth boxes,
        calculates true positives, false positives and false negatives
@@ -129,56 +130,8 @@ def calculate_individual_image_result(prediction_boxes, gt_boxes, iou_threshold)
     num_fp = prediction_boxes.shape[0] - Bp_match.shape[0]
     num_fn = gt_boxes.shape[0] - Ba_match.shape[0]
 
-    return {"true_pos": num_tp, "false_pos": num_fp, "false_neg": num_fn}
+    return {"true_pos": num_tp, "false_pos": num_fp, "false_neg": num_fn}, Bp_match, Ba_match
 
-   
-    
-    # Compute true positives, false positives, false negatives
-
-
-
-def insert_detections(boxes, scores, labels, precision=0.5):
-    # visualize detections
-    for box, score, label in zip(boxes[0], scores[0], labels[0]):
-        # scores are sorted so we can break
-        if score < precision:
-            break
-
-
-# def calculate_precision_recall(pred_boxes, gt_boxes, sum_tp, sum_fp, sum_fn, iou_threshold=0.5):
-#     """Given a set of prediction boxes and ground truth boxes for single images,
-#        calculates recall and precision over single images.
-       
-#        NB: all_prediction_boxes and all_gt_boxes are not matched!
-#     Args:
-#         all_prediction_boxes: (list of np.array of floats): each element in the list
-#             is a np.array containing all predicted bounding boxes for the given image
-#             with shape: [number of predicted boxes, 4].
-#             Each row includes [xmin, xmax, ymin, ymax]
-#         all_gt_boxes: (list of np.array of floats): each element in the list
-#             is a np.array containing all ground truth bounding boxes for the given image
-#             objects with shape: [number of ground truth boxes, 4].
-#             Each row includes [xmin, xmax, ymin, ymax]
-#         pred_boxes: A dictionary with value as a list of 4 elements (x1, y1, x2, y2).
-#         gt_boxes: A dictionary with value as a list of 4 elements (x1, y1, x2, y2).
-#     Returns:
-#         tuple: (precision, recall). Both float.
-#     """ 
-
-#     for obj_gt, label_gt in gt_boxes.items():         
-#         for obj_pred, label_pred in pred_boxes.items():
-#             if obj_gt != obj_pred:
-#                 continue
-
-#             pos_neg = calculate_individual_image_result(label_pred, label_gt, iou_threshold)
-#             sum_tp += pos_neg['true_pos']
-#             sum_fp += pos_neg['false_pos']
-#             sum_fn += pos_neg['false_neg']        
-
-#     precision = calculate_precision(sum_tp, sum_fp, sum_fn)
-#     recall = calculate_recall(sum_tp, sum_fp, sum_fn)
-
-#     return precision, recall, pos_neg
 
 
 def calculate_precision_recall(pred_boxes, gt_boxes, iou_threshold=0.5):
@@ -204,12 +157,13 @@ def calculate_precision_recall(pred_boxes, gt_boxes, iou_threshold=0.5):
     sum_fp = 0
     sum_fn = 0
 
-    for obj_gt, label_gt in gt_boxes.items():         
+    for obj_gt, labels_gt in gt_boxes.items():  
+        # print(obj_gt, ",", labels_gt
         for obj_pred, label_pred in pred_boxes.items():
             if obj_gt != obj_pred:
                 continue
 
-            pn_classification = calculate_individual_image_result(label_pred, label_gt, iou_threshold)
+            pn_classification, Bp_match, Ba_match = calculate_individual_image_result(label_pred, labels_gt, iou_threshold)
             sum_tp += pn_classification['true_pos']
             sum_fp += pn_classification['false_pos']
             sum_fn += pn_classification['false_neg']
@@ -221,7 +175,73 @@ def calculate_precision_recall(pred_boxes, gt_boxes, iou_threshold=0.5):
 
 
 
+def nms_consider_label(scores, boxes, labels, score_threshold, nms_threshold):
+    # Keep predictions where scores > threshold
+    indices = np.concatenate(np.argwhere(scores[0] > score_threshold))
+    scores = np.expand_dims(scores[0][indices], axis=0)
+    boxes = np.expand_dims(boxes[0][indices], axis=0)
+    labels = np.expand_dims(labels[0][indices], axis=0)
+    
+    # Suppress
+    i = 1
+    deleted = []
+    for box, score, label in zip(boxes[0], scores[0], labels[0]):
+        j = i
+        while j < len(scores[0]):
+            if (label == labels[0][j]):
+                if j not in deleted: 
+                    if calculate_iou(boxes[0][j], box) >= nms_threshold:
+                        indices = np.delete(indices, j-len(deleted))
+                        deleted.append(j)
+            j += 1
+        i += 1
 
+    scores = np.expand_dims(scores[0][indices], axis=0)
+    boxes = np.expand_dims(boxes[0][indices], axis=0)
+    labels = np.expand_dims(labels[0][indices], axis=0)
+
+    return boxes, scores, labels
+
+
+
+def nms(scores, boxes, labels, score_threshold, nms_threshold):
+    # Only keep predictions where scores > threshold
+    try:
+        indices = np.concatenate(np.argwhere(scores[0] > score_threshold))
+        scores = np.expand_dims(scores[0][indices], axis=0)
+        boxes = np.expand_dims(boxes[0][indices], axis=0)
+        labels = np.expand_dims(labels[0][indices], axis=0)
+
+        # Suppress
+        i = 1
+        deleted = []
+        for box, score, label in zip(boxes[0], scores[0], labels[0]):
+            j = i
+            while j < len(scores[0]):
+                if j not in deleted: 
+                    if calculate_iou(boxes[0][j], box) >= nms_threshold:
+                        indices = np.delete(indices, j-len(deleted))
+                        deleted.append(j)
+                j += 1
+            i += 1
+
+        scores = np.expand_dims(scores[0][indices], axis=0)
+        boxes = np.expand_dims(boxes[0][indices], axis=0)
+        labels = np.expand_dims(labels[0][indices], axis=0)
+    
+    except ValueError:
+        scores = [[]]
+        boxes = [[]]
+        labels = [[]]
+
+    return boxes, scores, labels
+
+
+
+
+
+# Not used
+######################################################################################################
 
 def calculate_precision_recall_all_images(all_prediction_boxes, all_gt_boxes, iou_threshold):
     """Given a set of prediction boxes and ground truth boxes for all images,

@@ -3,6 +3,8 @@ import sys
 import os
 import numpy as np
 import pandas as pd
+import csv
+import pandas
 
 
 
@@ -99,13 +101,41 @@ def extract_gt(dict):
 
 
 
-# def extract_bb(dict):
-#     df = {}
+def format_pred_bb(boxes, scores, labels, labels_to_names, precision=0.5):
+    """ 
+    # Arguments
+        boxes     : A list of 4 elements (x1, y1, x2, y2).
+    """    
+    detections = {}
+    for box, score, label in zip(boxes[0], scores[0], labels[0]):
+        # scores are sorted so we can break
+        if score < precision:
+            break
+            
+        if labels_to_names[label] in detections:
+            detections[labels_to_names[label]] = np.append(detections[labels_to_names[label]], [[box[0], box[1], box[2], box[3]]], axis=0) 
+        else:
+            detections[labels_to_names[label]] = np.array([[box[0], box[1], box[2], box[3]]])
 
-#     if type(dict) == type([]):
-#         for value in dict:
-#             df[value['name']] = value['bndbox']
-#     else:
-#         df[dict['name']] = dict['bndbox']
+    return detections
 
-#     return df
+
+
+def read_classes(csv_path):
+    classes = {}
+    file = open(csv_path, "r")
+    for line in file:
+        data = line[:-1].split(',')
+        classes[int(data[1])] = data[0]
+
+    return classes
+"""
+    with open(csv_path, mode='r') as csv_file:
+        csv_reader = csv.DictReader(csv_file)
+        line_count = 0
+        print(csv_reader)
+        for row in csv_reader:
+            if line_count == 0:
+                print(row)
+                
+"""

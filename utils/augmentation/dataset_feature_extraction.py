@@ -4,8 +4,7 @@ from matplotlib import pyplot as plt
 import sys
 import os
 import statistics as stat
-from utils.imageLoader import ImageLoader
-from utils.read_cifar10 import load_cifar10_batch
+from utils.augmentation.imageLoader import ImageLoader
 from random import shuffle
 
 def visualize(np_arr):
