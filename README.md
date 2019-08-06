@@ -9,6 +9,21 @@ This is a modified version of DeepTest for CNNs used for object detection. This 
 OS: Ubuntu 16.04  
 Read through and run [./install.sh](./install.sh)
 
+
+## Usage
+```
+python3 cnn_coverage.py path/to/data/folder
+```
+Notice that the data must contain imagefiles with assosiated .xml label files.
+Optional arguments:
+* --weights path/to/weights.h5
+* --classes path/to/classes.csv
+* --results path/to/results.csv
+
+Example of usage:
+python3 cnn_coverage.py data/data --weights ../keras-retinanet/snapshots/resnet50_csv_10_inference.h5 --results data/results.csv 
+
+
 ## Code Directories
 
 [models/](models/)  

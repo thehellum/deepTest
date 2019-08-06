@@ -129,13 +129,21 @@ def read_classes(csv_path):
         classes[int(data[1])] = data[0]
 
     return classes
-"""
-    with open(csv_path, mode='r') as csv_file:
-        csv_reader = csv.DictReader(csv_file)
-        line_count = 0
-        print(csv_reader)
-        for row in csv_reader:
-            if line_count == 0:
-                print(row)
-                
-"""
+
+
+
+def exists(csv_name, image_name):
+    index = 1 # CSV is one-indexed
+    total_tp, total_fp, total_fn = 0, 0, 0
+
+    with open(csv_name, 'rt') as f:
+        reader = csv.reader(f, delimiter=',')
+        for row in reader:
+            total_tp += int(row[1])
+            total_fp += int(row[2])
+            total_fn += int(row[3])
+            if image_name in row[0]:
+                return True, index + 1, total_tp, total_fp, total_fn
+            index += 1
+
+    return False, index, total_tp, total_fp, total_fn

@@ -68,6 +68,13 @@ def insert_detections(image, boxes, scores, labels, classes, score_threshold=0.5
     return image
 
 
+def save_to_dir(data_path, name, img):
+    save_dir = os.path.join(data_path, os.pardir, 'predictions')
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+    
+    cv2.imwrite(os.path.join(save_dir, name), img)
+
 
 def display_image(image):    
     plt.figure(figsize=(15, 15))
