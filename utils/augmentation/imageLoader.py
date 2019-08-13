@@ -3,7 +3,7 @@ import numpy as np
 import sys
 import os
 from random import shuffle
-from utils.dataframe import XmlDictConfig
+#from xmlDictConfig import XmlDictConfig
 import xml.etree.ElementTree as ElementTree
 
 class ImageLoader:
@@ -125,12 +125,18 @@ class ImageLoader:
         np.random.shuffle(self.database.T)
 
 def load_imgs():
-    imgs_rgb = ImageLoader(shape=(1088,1920), scale=0.2, mode='gray', size=3000, index_start=0)
-    imgs_rgb.load_from_dir(dir_path='hurtigruta_temp',)
-    #imgs_rgb.load_from_dir(dir_path='Dataset_full')
+    imgs_rgb = ImageLoader(scale=0.4, mode='rgb', size=3000, index_start=0)
+    imgs_rgb.load_from_dir(dir_path='hurtigruta_temp')
     imgs_rgb.normalize()
     imgs_rgb.shuffle_images()
-    imgs_rgb.save_to_file(file_path='Datasets_np/hutigruta_temp_gray_scaled02_shuffled.npy')
+    imgs_rgb.save_to_file(file_path='Datasets_np/hurtigruta_temp_rgb_1_train.npy')
+
+    imgs_gray = ImageLoader(scale=0.4, mode='gray', size=3000, index_start=0)
+    imgs_gray.load_from_dir(dir_path='hurtigruta_temp')
+    imgs_gray.normalize()
+    imgs_gray.shuffle_images()
+    imgs_gray.save_to_file(file_path='Datasets_np/hurtigruta_temp_gray_1_train.npy')
+
 
 if __name__ == "__main__":
     load_imgs()

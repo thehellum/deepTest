@@ -31,7 +31,7 @@ def compare_coverage(ncdict, ncdict_aug):
 
 
 def cnn_coverage(data_path, aug_path, weights_path, classes, results):
-    nc_threshold = 0.2
+    nc_threshold = 0.25
     iou_threshold = 0.5
     score_threshold = 0.3
 
@@ -45,6 +45,7 @@ def cnn_coverage(data_path, aug_path, weights_path, classes, results):
     i = 0 # To keep track over number of iterations (want to skip last iteration)
     i_csv = 1 # CSV is one-indexed
     total_tp, total_fp, total_fn = 0, 0, 0
+    NCs, NCs_updated = [], []
     res_print = PrettyTable(['Name', 'TP', 'FP', 'FN', 'Precision', 'Recall', 'Neuron coverage', 'Coverage similarity', 'Increase coverage'])
     name, precision, recall, p, similarity, increase = '-', '-', '-', '-', '-', '-'
     res_save = pd.DataFrame(columns=['name', 'TP', 'FP', 'FN', 'precision', 'recall', 'ncoverage', 'coverage_similarity', 'increase_coverage'])     # CSV for saving
@@ -118,6 +119,8 @@ def cnn_coverage(data_path, aug_path, weights_path, classes, results):
 
             res_print.add_row([name, pn_classification['true_pos'], pn_classification['false_pos'], pn_classification['false_neg'], precision, recall, p, similarity, increase])
             print("\n", res_print)
+
+            NCs.append(p)
 
             for aug_dir, _, aug_files in os.walk(aug_path): # returns (subdir, dirs (list), files (list))
                 if aug_dir != aug_path and img in aug_files:
@@ -194,6 +197,8 @@ def cnn_coverage(data_path, aug_path, weights_path, classes, results):
             total_fn += sum_fn
             sum_tp, sum_fp, sum_fn = 0, 0, 0 # To make sure sum isn't part of total when already added
 
+            NCs_updated.append(p_combined)
+
             # Check if last iteration
             i += 1
             if i <= len(gt_dict):
@@ -216,6 +221,14 @@ def cnn_coverage(data_path, aug_path, weights_path, classes, results):
     res_print.add_row(["TOTAL: ", total_tp + sum_tp, total_fp + sum_fp, total_fn + sum_fn, precision_total, recall_total, '-', '-', '-'])
     print("\n", res_print)
 
+    try:
+        NC_avg = sum(NCs) / len(NCs)
+        print("Average neuron coverage over non-augmented images: ", NC_avg)
+
+        NC_updated_avg = sum(NCs_updated) / len(NCs_updated)    
+        print("Average neuron coverage including augmented images: ", NC_updated_avg)
+    except ZeroDivisionError:
+        pass
 
     
 

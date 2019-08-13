@@ -6,9 +6,8 @@ import matplotlib.pyplot as plt
 import matplotlib
 import xml.etree.ElementTree as ElementTree
 from random import shuffle
-from utils.dataframe import XmlDictConfig
-from utils.augmentation.dataset_feature_extraction import ImageLoader, visualize
 from utils.augmentation.bndbox_utilities import update_bndbox, get_bndbox, draw_bndbox, iou, rotate_bounding_box
+from utils.augmentation.imageLoader import ImageLoader
 
 
 def generate_random_lines(imshape, slant, drop_length, number_of_drops):
@@ -64,12 +63,12 @@ class DatasetAugmenter():
             self.save_to_dir(data=data_brightness, dir=dir_name)
 
         n_fog_states = 2
-        fog_state = {'offset': [20,70],
-                    'fog_intenisity': [1.7,2.2],
-                     'pixel_intenisty_cutoff': [210,210],
+        fog_state = {'offset': [0,0],
+                    'fog_intenisity': [1,1.2],
+                     'pixel_intenisty_cutoff': [210,170],
                      'texture_variation_gain': [50,30],
                      'texture_variation_frequency': [-0.0009,0],
-                     'noise_variane': [0.01,0.01]}
+             'noise_variane': [0.01,0.1]}
         for state in range(n_fog_states):
             data_dense_fog = self.add_dense_fog(fog_state=fog_state, state=state)
             dir_name = 'd_fog_' + str(state)
@@ -79,7 +78,7 @@ class DatasetAugmenter():
         data_sparse_fog = self.add_sparse_fog(fog_intensity=0.6)
         self.save_to_dir(data=data_sparse_fog, dir='s_fog')
 
-        data_gaussian_blur = self.gaussian_blur()
+        data_gaussian_blur = self.gaussian_blur(ksize=(5,5), sigmaX=7, sigmaY=7)
         self.save_to_dir(data=data_gaussian_blur, dir='blur')
 
         thetas=[-10,10]
@@ -88,21 +87,19 @@ class DatasetAugmenter():
             dir_name = 'rotate_' + str(theta)
             self.save_to_dir(data=data_rotate, dir=dir_name, M=M)
 
-        data_rain = self.add_rain()
+        data_rain = self.add_sparse_fog(fog_intensity=0.6)
+        data_rain = self.add_rain(number_of_drops=1500, drop_length=4, drop_width=1, data=data_rain)
+        data_rain = self.gaussian_blur(ksize=(5,5), sigmaX=9, sigmaY=9, data=data_rain)
         self.save_to_dir(data=data_rain, dir='rain')
 
-        data_snow = self.add_snow()
+        data_snow = self.add_sparse_fog(fog_intensity=0.6)
+        data_snow = self.add_snow(number_of_drops=1000, drop_length=2, drop_width=2, data=data_snow)
+        data_snow = self.gaussian_blur(data=data_snow)
         self.save_to_dir(data=data_snow, dir='snow')
 
-        # data_rain_on_lens = self.add_rain_on_lens()
-        # self.save_to_dir(data=data_rain_on_lens, dir='rain_on_lens')
+        #data_rain_on_lens = self.add_rain_on_lens()
+        #self.save_to_dir(data=data_rain_on_lens, dir='rain_on_lens')
 
-        ## advanced augentation
-        # test1 = self.add_sparse_fog(fog_intensity=0.6, data=data_rain_on_lens)
-        # test1 = self.add_dense_fog(fog_state=fog_state, state=1, data=test1)
-        # test1 = self.add_rain(data=test1)
-        # test1 = self.edit_brightness(shift=-50, data=test1)
-        # self.save_to_dir(data=test1, dir='test1')
 
     def generate_name(self, seed, file_type='.jpg'):
         if len(str(seed)) == 1:
@@ -126,9 +123,11 @@ class DatasetAugmenter():
         tree = ElementTree.parse(path)
         return tree
 
-    def original_file_name(self, index):
+    def orignial_file_name(self, index):
         path = self.xml_file_paths[index]
-        return os.path.basename(path)[:-4]
+        name =os.path.basename(path)
+        #name = path.split('\\')[-1]
+        return name[:-4]
 
     def save_image(self, img, dir, index, M=np.array([None])):
         tree = self.load_xml_file(index=index)
@@ -137,7 +136,7 @@ class DatasetAugmenter():
 
         if self.separate_folders:
             if self.use_original_names:
-                name = self.original_file_name(index)
+                name = self.orignial_file_name(index)
             else:
                 name = self.generate_name(seed=index, file_type='')
 
@@ -188,7 +187,7 @@ class DatasetAugmenter():
         h,w = self.img_shape
         for k in range(self.size):
             tree = self.load_xml_file(index=k)
-            bndbox = get_bndbox(tree)
+            bndbox, _ = get_bndbox(tree, None)
             img = data[...,k]
             box_approved = True
             counter = 0
@@ -198,8 +197,8 @@ class DatasetAugmenter():
                 i = int(np.random.uniform(low=x//2, high=(h-(x//2)), size=1))
                 j = int(np.random.uniform(low=y//2, high=(w-(y//2)), size=1))
                 xmin,ymin,xmax,ymax = j-y//2, i-x//2, j+y//2, i+x//2
-                for box in bndbox:
-                    IoU = iou(box, [xmin,ymin,xmax,ymax])
+                for (_xmin,_ymin,_xmax,_ymax) in bndbox:
+                    IoU = iou([_xmin,_ymin,_xmax,_ymax], [xmin,ymin,xmax,ymax])
                     if IoU < 0.01:
                         img[i-x//2:i+x//2, j-y//2:j+y//2, :] = 0
                         box_approved = False
@@ -214,13 +213,14 @@ class DatasetAugmenter():
         if data is None:
             data = np.copy(a=self.data)
         for j in range(self.size):
+            noise = float(np.random.uniform(low=5, high=5))
             img = data[...,j]
-            img += shift
+            img += (shift + noise)
             img[img < 0] = 0
             img[img > 255] = 255
         return data
 
-    def add_dense_fog(self, fog_state, state, data=None):
+    def add_dense_fog(self, fog_state, state, remove_bright=True, data=None):
         # Name all the hyperparameters and make a procedure for generating suitable hyperparameters randomly
         if data is None:
             data = np.copy(a=self.data)
@@ -229,6 +229,8 @@ class DatasetAugmenter():
             shape = (self.img_shape[0], self.img_shape[1], self.img_channels)
         else:
             shape = (self.img_shape[0], self.img_shape[1])
+
+        new_data = np.zeros((shape[0],shape[1],shape[2],0), dtype=np.float32)
 
         offset = fog_state['offset'][state]
         fog_intenisity = fog_state['fog_intenisity'][state]
@@ -241,30 +243,45 @@ class DatasetAugmenter():
 
         for i in range(1,shape[0]+1):
             if i >= offset:
-                fog_filter[-i,:,:] = (i-(offset-1))*(i)*np.ones((shape[1],shape[2]))
+                #fog_filter[-i,:,:] = (i-(offset-1))*(i)*np.ones((shape[1],shape[2]))
+                fog_filter[-i,:,:] = ((i-offset) + 10)*np.ones((shape[1],shape[2]))
             elif i < offset:
-                fog_filter[-i,:,:] = offset*i*np.ones((shape[1],shape[2]))
+                #fog_filter[-i,:,:] = offset*i*np.ones((shape[1],shape[2]))
+                fog_filter[-i,:,:] = 5*np.ones((shape[1],shape[2]))
 
         fog_filter /= (fog_filter.max()/fog_intenisity)
         fog_filter *= 255
 
         for j in range(self.size):
             img = data[...,j]
-            if img.max() > 200:
-                img -= img.max()*0.3
-                img[img < 0] = 0
-            img += fog_filter
-            img[img > pixel_intenisty_cutoff] = pixel_intenisty_cutoff
 
-            x = np.arange(shape[1])
-            y = texture_variation_gain*np.sin(2*np.pi*x*texture_variation_frequency)
-            for k in range(1,shape[0]+1):
-                f = (k/shape[0])*texture_variation_frequency
-                var = (k/shape[0])*noise_variane
-                y = texture_variation_gain*np.sin(2*np.pi*x*f) + np.random.normal(loc=0, scale=var, size=shape[1])
-                img[-k,:,:] += np.concatenate((y.reshape(shape[1],1),y.reshape(shape[1],1),y.reshape(shape[1],1)),1)
-            #data[...,j] = foggy
-        return data
+            h,w,_ = img.shape
+            intenisty = np.average(a=img[h//2:-1,:,:], axis=(0,1,2))
+            intensity_limit = 120
+
+            if intenisty > intensity_limit:
+                pass
+            else:
+                shift = np.average(a=img, axis=(0,1,2)) - 150 + int(np.random.uniform(low=-5,high=5))
+                img -= int(shift)
+                img[img < 0] = 0
+
+                #img += fog_filter
+                img = cv2.addWeighted(img, 0.3, fog_filter.astype(np.float32), 0.7,0)
+                img[img > pixel_intenisty_cutoff] = pixel_intenisty_cutoff
+                x = np.arange(shape[1])
+                y = texture_variation_gain*np.sin(2*np.pi*x*texture_variation_frequency)
+                for k in range(1,shape[0]+1):
+                    f = (k/shape[0])*texture_variation_frequency
+                    var = (k/shape[0])*noise_variane
+                    y = texture_variation_gain*np.sin(2*np.pi*x*f) + np.random.normal(loc=0, scale=var, size=shape[1])
+                    img[-k,:,:] += np.concatenate((y.reshape(shape[1],1),y.reshape(shape[1],1),y.reshape(shape[1],1)),1)
+                data[...,j] = img
+                new_data = np.concatenate((new_data, np.expand_dims(img, axis=-1)), axis=-1)
+        if remove_bright:
+            return new_data
+        else:
+            return data
 
     def add_sparse_fog(self, fog_intensity, data=None):
         if data is None:
@@ -290,6 +307,8 @@ class DatasetAugmenter():
         if data is None:
             data = np.copy(a=self.data)
         h,w = self.img_shape
+        noise = float(np.random.uniform(low=5, high=5))
+        theta += noise
         M = cv2.getRotationMatrix2D(center=(w//2,h//2), angle=theta, scale=1)
         for i in range(self.size):
             tree = self.load_xml_file(index=i)
@@ -297,15 +316,15 @@ class DatasetAugmenter():
             data[...,i] = cv2.warpAffine(img, M, (w,h))
         return data, M
 
-    def add_rain(self, data=None):
+    def add_rain(self, number_of_drops=1500, drop_length=4, drop_width=1, data=None):
         if data is None:
             data = np.copy(a=self.data)
 
         slant_extreme = 1
         slant = np.random.randint(-slant_extreme,slant_extreme)
-        drop_length = 2
-        drop_width = 2
-        number_of_drops = 1000
+        drop_length = drop_length
+        drop_width = drop_width
+        number_of_drops = number_of_drops
         drop_color = (100,100,100) ## a shade of gray
         for i in range(self.size):
             rain_drops = generate_random_lines(self.img_shape, slant, drop_length, number_of_drops)
@@ -316,19 +335,19 @@ class DatasetAugmenter():
                 (rain_drop[0]+slant,rain_drop[1]+drop_length),
                 drop_color,drop_width)
             img = cv2.addWeighted(overlay, 0.7, img, 0.3,0)
-            img = cv2.blur(img,(3,3)) ## rainy view are blurry
+            #img = cv2.blur(img,(3,3)) ## rainy view are blurry
             img_HLS = cv2.cvtColor(img, cv2.COLOR_RGB2HLS) ## Conversion to HLS
             data[...,i] = cv2.cvtColor(img_HLS, cv2.COLOR_HLS2RGB) ## Conversion to RGB
         return data
 
-    def add_snow(self, data=None):
+    def add_snow(self, number_of_drops=1000, drop_length=1, drop_width=1, data=None):
         if data is None:
             data = np.copy(a=self.data)
         slant_extreme=1
         slant= np.random.randint(-slant_extreme,slant_extreme)
-        drop_length=2
-        drop_width=2
-        number_of_drops = 1000
+        drop_length=drop_length
+        drop_width=drop_width
+        number_of_drops = number_of_drops
         drop_color=(255,255,255) ## a shade of gray
         for i in range(self.size):
             rain_drops = generate_random_lines(self.img_shape, slant, drop_length, number_of_drops)
@@ -382,7 +401,8 @@ class DatasetAugmenter():
                         path_xml = os.path.join(root, file[:-4] + '.xml')
                         tree = ElementTree.parse(path_xml)
                         img = cv2.imread(path)
-                        bndbox = get_bndbox(tree)
+                        (h,w,_) = img.shape
+                        bndbox = get_bndbox(tree, None)
                         for box in bndbox:
                             xmin, ymin, xmax, ymax = box
                             draw_bndbox(img, xmin, ymin, xmax, ymax)
@@ -394,27 +414,21 @@ def augment(data_path, save_path):
     num_xml = len([name for name in os.listdir(data_path) if '.xml' in name])
     imgs_rgb = ImageLoader(shape=(720,1280), scale=1, mode='rgb', size=num_xml)
     imgs_rgb.load_from_dir(dir_path=data_path)
+
     # Don't normalize!
     augmenter = DatasetAugmenter(imgs=imgs_rgb, separate_folders=True, path=save_path, use_original_names=True)
     augmenter()
     # augmenter.visualize_bndboxes()
 
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('dataset', type=str, help='Path to dataset.')
-    args = parser.parse_args()
+# if __name__ == '__main__':
+#     path_save_to = os.path.join(sys.path[0], 'Data_augmentation')
+#     path_data = os.path.join(sys.path[0], 'Dataset_full')
 
-    # data_path = os.path.join(sys.path[0], 'Dataset_full')
-    # aug_save = os.path.join(sys.path[0], 'Data_augmentation')
-    aug_save = os.path.join(args.dataset, os.pardir, "augmented")
-    if not os.path.exists(aug_save):
-        os.makedirs(aug_save) 
-    
-    num_xml = len([name for name in os.listdir(args.dataset) if '.xml' in name])
-    imgs_rgb = ImageLoader(shape=(720,1280), scale=1, mode='rgb', size=num_xml)
-    imgs_rgb.load_from_dir(dir_path=data_path)
-    # Don't normalize!
-    augmenter = DatasetAugmenter(imgs=imgs_rgb, separate_folders=True, path=aug_save, use_original_names=True)
-    augmenter()
-    augmenter.visualize_bndboxes()
+#     imgs_rgb = ImageLoader(shape=(720,1280), scale=1, mode='rgb', size=10)
+#     imgs_rgb.load_from_dir(dir_path=data_path)
+
+#     # Don't normalize!
+#     augmenter = DatasetAugmenter(imgs=imgs_rgb, separate_folders=True, path=save_path, use_original_names=True)
+#     augmenter()
+#     augmenter.visualize_bndboxes()

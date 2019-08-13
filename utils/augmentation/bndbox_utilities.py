@@ -1,21 +1,34 @@
 import xml.etree.ElementTree as ElementTree
 import numpy as np
 import cv2
+# from xmlDictConfig import XmlDictConfig
 from utils.dataframe import XmlDictConfig
 
 
-def get_bndbox(tree):
+def get_bndbox(tree, image_size=None):
     root = tree.getroot()
     xmldict = XmlDictConfig(root)
     bndbox = []
+    classes = []
     if type(xmldict['object']) == type([]):
         for elem in xmldict['object']:
             xmin,ymin,xmax,ymax = elem['bndbox']['xmin'],elem['bndbox']['ymin'],elem['bndbox']['xmax'],elem['bndbox']['ymax']
+            class_name = elem['name']
             bndbox.append((int(xmin), int(ymin), int(xmax), int(ymax)))
+            classes.append(class_name)
     else:
         xmin,ymin,xmax,ymax = xmldict['object']['bndbox']['xmin'],xmldict['object']['bndbox']['ymin'],xmldict['object']['bndbox']['xmax'],xmldict['object']['bndbox']['ymax']
+        class_name = xmldict['object']['name']
         bndbox.append((int(xmin), int(ymin), int(xmax), int(ymax)))
-    return bndbox
+        classes.append(class_name)
+
+    if image_size is not None:
+        scaled_boxes = []
+        for box in bndbox:
+            scaled_boxes.append(scale_bndbox(tree=tree, bndbox=box, image_size=image_size))
+        return scaled_boxes, classes
+    else:
+        return bndbox, classes
 
 def update_bndbox(tree, bndbox):
     root = tree.getroot()
@@ -27,8 +40,23 @@ def update_bndbox(tree, bndbox):
         root[6+i][4][2].text = str(xmax)
         root[6+i][4][3].text = str(ymax)
 
-def draw_bndbox(img, xmin, ymin, xmax, ymax):
-    cv2.rectangle(img=img, pt1=(xmin,ymin), pt2=(xmax,ymax), color=(0,0,255), thickness=1)
+def draw_bndbox(img, xmin, ymin, xmax, ymax, cls, color):
+    cv2.rectangle(img=img, pt1=(xmin,ymin), pt2=(xmax,ymax), color=color, thickness=1)
+    font                   = cv2.FONT_HERSHEY_SIMPLEX
+    bottomLeftCornerOfText = (int(xmin),int(ymin-2))
+    fontScale              = 0.2
+    fontColor              = (255,255,255)
+    lineType               = 1
+
+    if cls == 1:
+        label = '1'
+    elif cls == 2:
+        label = '2'
+    elif cls == 3:
+        label = '3'
+    elif cls == 4:
+        label = '4'
+    cv2.putText(img, label, bottomLeftCornerOfText, font, fontScale, fontColor, lineType)
 
 def iou(box_a, box_b):
     x_a = max(box_a[0], box_b[0])
@@ -41,7 +69,7 @@ def iou(box_a, box_b):
     return intersection / float(area_a + area_b - intersection)
 
 def rotate_bounding_box(tree, M):
-    bndbox = get_bndbox(tree)
+    bndbox,_ = get_bndbox(tree, )
     new_bndbox = []
     for elem in bndbox:
         xmin, ymin, xmax, ymax = elem
@@ -69,3 +97,24 @@ def rotate_bounding_box(tree, M):
         new_bndbox.append((xmin_new, ymin_new, xmax_new, ymax_new))
 
     update_bndbox(tree, new_bndbox)
+
+def scale_bndbox(tree, bndbox, image_size):
+    img_h, img_w = image_size
+    root = tree.getroot()
+    current_w = int(root[4][0].text)
+    current_h = int(root[4][1].text)
+    current_channels = int(root[4][2].text)
+
+    ratio_w = img_w / current_w
+    ratio_h = img_h / current_h
+    #bndboxes = get_bndbox(tree)
+    #new_bndbox = []
+    xmin, ymin, xmax, ymax = bndbox
+    scaled_xmin = xmin*ratio_w
+    scaled_xmax = xmax*ratio_w
+    scaled_ymin = ymin*ratio_h
+    scaled_ymax = ymax*ratio_h
+    #gt_box = [int(i) for i in gt_box]
+    #new_bndbox.append((scaled_xmin, scaled_ymin, scaled_xmax, scaled_ymax))
+    return [int(scaled_xmin), int(scaled_ymin), int(scaled_xmax), int(scaled_ymax)]
+    #update_bndbox(tree, new_bndbox)
