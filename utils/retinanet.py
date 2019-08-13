@@ -62,7 +62,7 @@ def insert_detections(image, boxes, scores, labels, classes, score_threshold=0.5
         b = box.astype(int)
         draw_box(image, b, color=color)
         
-        caption = "{} {:.3f}".format(labels_to_names[label], score)
+        caption = "{} {:.3f}".format(classes[label], score)
         draw_caption(image, b, caption)
 
     return image
