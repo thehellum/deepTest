@@ -61,11 +61,14 @@ def read(inputDirectory):
 
     for path, dirnames, filenames in os.walk(inputDirectory):
         for name in filenames:
-            if '.xml' in name and (name[:-4] + '.jpg') in filenames:
-                tree = ElementTree.parse(os.path.join(path, name))
-                root = tree.getroot()
-                xmldict = XmlDictConfig(root)
-                df[xmldict['filename']] = xmldict['object']
+            if '.xml' in name:
+                if name[:-4] + '.jpg' in filenames or name[:-4] + '.jpeg' in filenames or name[:-4] + '.png' in filenames:
+                    tree = ElementTree.parse(os.path.join(path, name))
+                    root = tree.getroot()
+                    xmldict = XmlDictConfig(root)
+                    df[xmldict['filename']] = xmldict['object']
+                else:
+                    continue
 
     return df
 

@@ -123,12 +123,13 @@ def cnn_coverage(data_path, aug_path, weights_path, classes, results):
             NCs.append(p)
 
             for aug_dir, _, aug_files in os.walk(aug_path): # returns (subdir, dirs (list), files (list))
-                if aug_dir != aug_path and img in aug_files:
-                    print("\n---Analysing augmented picture,", os.path.basename(aug_dir), ", of", img, "---")
-                    name, precision, recall, p, similarity, increase = os.path.join(img, os.path.basename(aug_dir)), '-', '-', '-', '-', '-'
+                img_name = img.split('.')[0] + '.jpg'
+                if aug_dir != aug_path and img_name in aug_files:
+                    print("\n---Analysing augmented picture,", os.path.basename(aug_dir), ", of", img_name, "---")
+                    name, precision, recall, p, similarity, increase = (img.split('.')[0] + "-" +  os.path.basename(aug_dir)), '-', '-', '-', '-', '-'
                     precision_combined, recall_combined, p_combined, increase = '-', '-', '-', '-'
                     
-                    image_path = os.path.join(aug_dir, img)
+                    image_path = os.path.join(aug_dir, img_name)
                     aug_image, draw, scale = retinanet.load_image(image_path)
 
 
