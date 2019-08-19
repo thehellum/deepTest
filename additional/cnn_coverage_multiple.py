@@ -1,8 +1,6 @@
 from __future__ import print_function
 import argparse
 import numpy as np
-import os
-from utils.ncoverage import NCoverage
 import cv2
 import time
 from prettytable import PrettyTable
@@ -14,7 +12,11 @@ from keras_retinanet import models
 
 # Set tf backend to allow memory to grow, instead of claiming everything
 import tensorflow as tf
+import os
+import sys
+sys.path.append(os.path.join(".."))
 
+from utils.ncoverage import NCoverage
 import utils.dataframe as df
 import utils.retinanet as retinanet
 import utils.augmentation.augment as aug
@@ -30,8 +32,8 @@ def compare_coverage(ncdict, ncdict_aug):
     return similar
 
 
-def cnn_coverage(data_path, aug_path, weights_path, classes, results):
-    nc_threshold = 0.2
+def cnn_coverage(data_path, aug_path, weights_path, classes, results, nc_threshold):
+    # nc_threshold = 0.75
     iou_threshold = 0.5
     score_threshold = 0.3
 
@@ -51,6 +53,7 @@ def cnn_coverage(data_path, aug_path, weights_path, classes, results):
     res_save = pd.DataFrame(columns=['name', 'TP', 'FP', 'FN', 'precision', 'recall', 'ncoverage', 'coverage_similarity', 'increase_coverage'])     # CSV for saving
     nc = NCoverage(model, nc_threshold)    
 
+    NC_save = pd.DataFrame(columns=['Threshold', 'NC_avg', 'NC_avg_updated'])
 
     # Extract data
     # ---------------------------------------------------------------------------------
@@ -217,7 +220,7 @@ def cnn_coverage(data_path, aug_path, weights_path, classes, results):
     if results is not None and os.path.exists(results):
         res_save.to_csv(path_or_buf=results, mode='a', header=False, index=False, index_label=False)
     else:
-        res_save.to_csv(path_or_buf=os.path.join(data_path, os.pardir, 'results.csv'), header=False, index=False, index_label=False)
+        res_save.to_csv(path_or_buf=os.path.join(data_path, os.pardir, 'results_one.csv'), header=False, index=False, index_label=False)
     
     res_print.add_row(["TOTAL: ", total_tp + sum_tp, total_fp + sum_fp, total_fn + sum_fn, precision_total, recall_total, '-', '-', '-'])
     print("\n", res_print)
@@ -228,16 +231,26 @@ def cnn_coverage(data_path, aug_path, weights_path, classes, results):
 
         NC_updated_avg = sum(NCs_updated) / len(NCs_updated)    
         print("Average neuron coverage including augmented images with nc_threshold = ", nc_threshold, ": ", NC_updated_avg)
+    
+
+        NC_save.loc[nc_threshold*10] = [nc_threshold, NC_avg, NC_updated_avg]
+        if os.path.exists("data/NC.csv"):
+            NC_save.to_csv(path_or_buf="data/NC.csv", mode='a', header=False, index=False, index_label=False)
+        else:
+            NC_save.to_csv(path_or_buf="data/NC.csv", header=False, index=False, index_label=False)
+    
     except ZeroDivisionError:
         pass
 
+
+    
     
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('dataset', type=str, help='Path to dataset.')
-    parser.add_argument('--weights', type=str, default=os.path.join(os.pardir, 'keras-retinanet/snapshots', 'resnet50_coco_best_v2.1.0.h5'),
+    parser.add_argument('--weights', type=str, default=os.path.join(os.pardir, 'keras-retinanet/snapshots', 'resnet50_csv_04_inference.h5'),
                         help='Path to weights. Should be added to ../keras-retinanet/snapshots')
     parser.add_argument('--classes', type=str,
                         help='Path to csv file containing classes.')
@@ -248,7 +261,8 @@ if __name__ == '__main__':
     try:
         classes = df.read_classes(args.classes)
     except TypeError:
-        classes = {0: 'person', 1: 'bicycle', 2: 'car', 3: 'motorcycle', 4: 'airplane', 5: 'bus', 6: 'train', 7: 'truck', 8: 'boat', 9: 'traffic light', 10: 'fire hydrant', 11: 'stop sign', 12: 'parking meter', 13: 'bench', 14: 'bird', 15: 'cat', 16: 'dog', 17: 'horse', 18: 'sheep', 19: 'cow', 20: 'elephant', 21: 'bear', 22: 'zebra', 23: 'giraffe', 24: 'backpack', 25: 'umbrella', 26: 'handbag', 27: 'tie', 28: 'suitcase', 29: 'frisbee', 30: 'skis', 31: 'snowboard', 32: 'sports ball', 33: 'kite', 34: 'baseball bat', 35: 'baseball glove', 36: 'skateboard', 37: 'surfboard', 38: 'tennis racket', 39: 'bottle', 40: 'wine glass', 41: 'cup', 42: 'fork', 43: 'knife', 44: 'spoon', 45: 'bowl', 46: 'banana', 47: 'apple', 48: 'sandwich', 49: 'orange', 50: 'broccoli', 51: 'carrot', 52: 'hot dog', 53: 'pizza', 54: 'donut', 55: 'cake', 56: 'chair', 57: 'couch', 58: 'potted plant', 59: 'bed', 60: 'dining table', 61: 'toilet', 62: 'tv', 63: 'laptop', 64: 'mouse', 65: 'remote', 66: 'keyboard', 67: 'cell phone', 68: 'microwave', 69: 'oven', 70: 'toaster', 71: 'sink', 72: 'refrigerator', 73: 'book', 74: 'clock', 75: 'vase', 76: 'scissors', 77: 'teddy bear', 78: 'hair drier', 79: 'toothbrush'}
+        # classes = {0: 'person', 1: 'bicycle', 2: 'car', 3: 'motorcycle', 4: 'airplane', 5: 'bus', 6: 'train', 7: 'truck', 8: 'boat', 9: 'traffic light', 10: 'fire hydrant', 11: 'stop sign', 12: 'parking meter', 13: 'bench', 14: 'bird', 15: 'cat', 16: 'dog', 17: 'horse', 18: 'sheep', 19: 'cow', 20: 'elephant', 21: 'bear', 22: 'zebra', 23: 'giraffe', 24: 'backpack', 25: 'umbrella', 26: 'handbag', 27: 'tie', 28: 'suitcase', 29: 'frisbee', 30: 'skis', 31: 'snowboard', 32: 'sports ball', 33: 'kite', 34: 'baseball bat', 35: 'baseball glove', 36: 'skateboard', 37: 'surfboard', 38: 'tennis racket', 39: 'bottle', 40: 'wine glass', 41: 'cup', 42: 'fork', 43: 'knife', 44: 'spoon', 45: 'bowl', 46: 'banana', 47: 'apple', 48: 'sandwich', 49: 'orange', 50: 'broccoli', 51: 'carrot', 52: 'hot dog', 53: 'pizza', 54: 'donut', 55: 'cake', 56: 'chair', 57: 'couch', 58: 'potted plant', 59: 'bed', 60: 'dining table', 61: 'toilet', 62: 'tv', 63: 'laptop', 64: 'mouse', 65: 'remote', 66: 'keyboard', 67: 'cell phone', 68: 'microwave', 69: 'oven', 70: 'toaster', 71: 'sink', 72: 'refrigerator', 73: 'book', 74: 'clock', 75: 'vase', 76: 'scissors', 77: 'teddy bear', 78: 'hair drier', 79: 'toothbrush'}
+        classes = {0: 'motor_vessel', 1: 'sailboat_sail', 2: 'sailboat_motor', 3: 'kayak'}
 
     print("\n---Augmenting---")
     aug_save = os.path.join(args.dataset, os.pardir, 'augmented')
@@ -258,4 +272,12 @@ if __name__ == '__main__':
     aug.augment(args.dataset, aug_save)
     
     print("\n---Starting test---")
-    cnn_coverage(args.dataset, aug_save, args.weights, classes, args.results)
+    cnn_coverage(args.dataset, aug_save, args.weights, classes, args.results, 0)
+    cnn_coverage(args.dataset, aug_save, args.weights, classes, args.results, 0.1)
+    cnn_coverage(args.dataset, aug_save, args.weights, classes, args.results, 0.2)
+    cnn_coverage(args.dataset, aug_save, args.weights, classes, args.results, 0.3)
+    cnn_coverage(args.dataset, aug_save, args.weights, classes, args.results, 0.4)
+    cnn_coverage(args.dataset, aug_save, args.weights, classes, args.results, 0.5)
+    cnn_coverage(args.dataset, aug_save, args.weights, classes, args.results, 0.6)
+    cnn_coverage(args.dataset, aug_save, args.weights, classes, args.results, 0.7)
+
